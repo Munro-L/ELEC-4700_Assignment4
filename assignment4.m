@@ -90,16 +90,16 @@ Vo_arr = V_arr .* (Ro/(Ro + R4));
 
 % plot against omega
 figure
-plot(omega_sweep, real(Vo_arr));  % only plotting real part
-title('AC Sweep of Vin: Vo')
+loglog(omega_sweep, real(Vo_arr));  % only plotting real part
+title('Log Scale AC Sweep of Vin: Vo')
 xlabel('Frequency (rad/s)')
 ylabel('Vo (V)')
 
 % calculate and plot gain
 gain = Vin ./ Vo_arr;
 figure
-plot(omega_sweep, gain)
-title('AC Sweep of Vin: Gain')
+loglog(omega_sweep, gain)
+title('Log Scale AC Sweep of Vin: Gain')
 xlabel('Frequency (rad/s)')
 ylabel('Gain')
 
@@ -133,10 +133,14 @@ ylabel('Counts')
 
 
 %% Question 4
-% By inspection, this circuit appears to be a low-pass amplifier. A high gain at low frequencies
+% By inspection, this circuit appears to be a high-pass amplifier. A high gain at low frequencies
 % should be expected, dropping off rapidly at higher frequencies. See scan
 % of additional work for FD derivation. The following code is a FD
-% implementation of the derived work.
+% implementation of the derived work. The FD simulation performs its time
+% steps backwards, because in the derivation,  case was found where the
+% current voltage depended on the next rather than the previous. Note: The
+% scatter plot is performed live inside the time loop, howeverer the PDF
+% report will only show the final result.
 
 duration = 1;               % length of sim
 steps = 1000;               % # of steps in sim
@@ -185,6 +189,8 @@ scatter(Vin_arr, Vo_arr, 10)
 title('Vin vs. Vo (Final)')
 
 % frequency domain stuff
+fs = 1/delta_t;
+f = fs/2*linspace(-1,1,fs);
 Vin_f = fftshift(fft(Vin_arr));
 Vo_f = fftshift(fft(Vo_arr));
 figure
@@ -204,17 +210,6 @@ title('Frequency Content of Input & Output')
 % 0.001.
 
 Cn = 0.00001;
-In = randn*0.001;
-
-% C and G matrices
-G =[ -1, 1, 1, 0, 0, 0, 0, 0;
-   0, 0, 0, -1,  1, 0, 0, 0; 
-   -1, 0, 0, 0, 1/R1, -1/R1, 0, 0;
-   0, 0, -1, 1/R3, 1, 0, 0, 0;
-   0, -1, 0, 0, 1/R2, 0, 0, 0;   
-   0, 0, alpha, 0,  0, 0, -1, 0; 
-   0, 0, 0, 0, 0, 1, 0, 0;
-   0, 0, 0, 0, 0, 0, 0, 1];
 
 % C matrix has additional Cn term in Eq. 4
 C = [ 0, 0, 0, 0, 0, 0, 0, 0;
@@ -223,23 +218,57 @@ C = [ 0, 0, 0, 0, 0, 0, 0, 0;
    0, 0, 0, Cn, 0, 0, 0, 0;
    0, 0, 0, 0, 0, 0, 0, 0;  
    0, 0, 0, 0, 0, 0, 0, 0;
-   0, 0, 0, 0, 0, 0, 0, 0;
    0, 0, 0, 0, 0, 0, 0, 0];
- 
-% perform DC sweep
-V_sweep = linspace(-10, 10, 100);
-V_arr = zeros(100,1);
-for i = 1:length(V_sweep)
-  Vin = V_sweep(i);
-  F = [0; 0; 0; 0; 0; 0; Vin; In];
-  Vout = G \ F;
-  V_arr(i) = Vout(7); 
-end
-Vo_arr = V_arr .* (Ro/(Ro + R4));
 
-% plot figures
+% simulation time loop, with live plot
 figure
-plot(V_sweep, Vo_arr)
-title('DC Sweep of Vin With Noise In: Vo')
-xlabel('Vin (V)')
+while time < duration
+    if time < 0.03
+        Vin1 = 0;
+    else
+        Vin1 = 1;
+    end
+    Vin2 = sin(2*pi*(1/0.03)*time);
+    Vin3 = exp((-(time - 0.06)^2)/(2*(0.03^2)));
+    Vin_arr(step) = Vin1 + Vin2 + Vin3;
+    
+    In = randn*0.001;
+    F = [0; 0; 0; In; 0; 0; Vin;];
+    F_update = F - C.*V_old;
+    
+    output_arr = (G + C)\F_update;
+    Vo_arr(step) = output_arr(7) .* (Ro/(Ro + R4));
+    
+    % plot live while there are relatively few data points
+    % takes too long with 1000x1000 on every loop
+    if nnz(Vin_arr) < 200
+        scatter(Vin_arr, Vo_arr, 10)
+        xlabel('Vin (V)')
+        ylabel('Vo (V)')
+        title('Vin vs. Vo With Noise (Live)')
+        if mod(steps, 20) == 0
+            pause(0.1)
+        end
+    end
+    
+    V_old = V_arr(step);
+    step = step + 1;
+    time = time + delta_t;
+end
+scatter(Vin_arr, Vo_arr, 10)
+title('Vin vs. Vo With Noise (Final)')
+
+Vo_spectrum = fftshift(fft(Vo_arr));
+Vin_spectrum = fftshift(fft(Vin_arr));
+
+figure
+plot(f, Vo_spectrum)
+xlabel('Frequency (Hz)')
 ylabel('Vo (V)')
+title('Frequency Response of Vo')
+
+figure
+plot(f, Vin_spectrum)
+xlabel('Frequency (Hz)')
+ylabel('Vin (V)')
+title('Frequency Response of Vin')
