@@ -5,11 +5,11 @@
 % steps will still be performed with reasonable example data to prove I
 % learned the concepts. The chosen data gives an R3 = 10.1 Ohms.
 
-voltage = linspace(0.1, 10);
-current = linspace(0.1, 100);
+voltage = linspace(0.1, 250);
+current = linspace(0.1, 10);
 p = polyfit(voltage, current, 1);    % order 1 linear fit
 fit = p(1)*voltage+p(2);
-R3 = p(1);
+R3 = 1/p(1);
 
 figure
 plot(voltage, current, 'ro')
@@ -55,7 +55,7 @@ V_arr = zeros(100,1);
 V3_arr = zeros(100,1);
 for i = 1:length(V_sweep)
   Vin = V_sweep(i);
-  F = [0; 0; 0; 0; 0; Vin; 0];
+  F = [0; 0; 0; 0; 0; 0; Vin];
   Vout = G \ F;
   V_arr(i) = Vout(7);
   V3_arr(i) = Vout(4); 
@@ -80,7 +80,7 @@ ylabel('V3 (V)')
 omega_sweep = linspace(100, 1E9, 1000) .* 2 .* pi;   % sweep from 100Hz to 1GHz in 1000 steps
 V_arr = zeros(1000,1);
 Vin = 10;
-F = [0; 0; 0; 0; 0; Vin; 0];
+F = [0; 0; 0; 0; 0; 0; Vin];
 for i = 1:length(omega_sweep)
   Vout = (G + omega_sweep(i) .* 1i .* C) \ F;
   V_arr(i) = Vout(7);
@@ -133,10 +133,65 @@ ylabel('Counts')
 
 
 %% Question 4
-% This appears to be a low-pass amplfier. A high gain at low frequencies
+% By inspection, this circuit appears to be a low-pass amplifier. A high gain at low frequencies
 % should be expected, dropping off rapidly at higher frequencies. See scan
-% of additional work for FD derivation.
+% of additional work for FD derivation. The following code is a FD
+% implementation of the derived work.
 
+duration = 1;               % length of sim
+steps = 1000;               % # of steps in sim
+step = 1;                   % current step
+delta_t = duration/steps;   % size of steps
+time = 0;                   % current time in simulation, increases by delta_t on every step
+Vo_arr = zeros(1000,1);
+Vin_arr = zeros(1000, 1);
+V_old = 0;                  % initial condition for V
+
+% simulation time loop, with live plot
+figure
+while time < duration
+    if time < 0.03
+        Vin1 = 0;
+    else
+        Vin1 = 1;
+    end
+    Vin2 = sin(2*pi*(1/0.03)*time);
+    Vin3 = exp((-(time - 0.06)^2)/(2*(0.03^2)));
+    Vin_arr(step) = Vin1 + Vin2 + Vin3;
+    
+    F = [0; 0; 0; 0; 0; 0; Vin_arr(step)];
+    F_update = F - C.*V_old;
+    
+    output_arr = (G + C)\F_update;
+    Vo_arr(step) = output_arr(7) .* (Ro/(Ro + R4));
+    
+    % plot live while there are relatively few data points
+    % takes too long with 1000x1000 on every loop
+    if nnz(Vin_arr) < 200
+        scatter(Vin_arr, Vo_arr, 10)
+        xlabel('Vin (V)')
+        ylabel('Vo (V)')
+        title('Vin vs. Vo (Live)')
+        if mod(steps, 20) == 0
+            pause(0.1)
+        end
+    end
+    
+    V_old = V_arr(step);
+    step = step + 1;
+    time = time + delta_t;
+end
+scatter(Vin_arr, Vo_arr, 10)
+title('Vin vs. Vo (Final)')
+
+% frequency domain stuff
+Vin_f = fftshift(fft(Vin_arr));
+Vo_f = fftshift(fft(Vo_arr));
+figure
+plot(Vin_f, Vo_f)
+xlabel('FT of Vin')
+ylabel('FT of Vo')
+title('Frequency Content of Input & Output')
 
 
 
@@ -176,7 +231,7 @@ V_sweep = linspace(-10, 10, 100);
 V_arr = zeros(100,1);
 for i = 1:length(V_sweep)
   Vin = V_sweep(i);
-  F = [0; 0; 0; 0; 0; Vin; 0; In];
+  F = [0; 0; 0; 0; 0; 0; Vin; In];
   Vout = G \ F;
   V_arr(i) = Vout(7); 
 end
